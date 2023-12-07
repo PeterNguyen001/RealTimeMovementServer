@@ -1,10 +1,11 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.TextCore.Text;
 
 public class GameLogic : MonoBehaviour
 {
-    Vector2 characterVelocityInPercent;
+    
     const float CharacterSpeed = 0.25f;
     float DiagonalCharacterSpeed;
 
@@ -15,12 +16,35 @@ public class GameLogic : MonoBehaviour
         NetworkServerProcessing.SetGameLogic(this);
     }
 
+    private void Update()
+    {
+        List<int> playerIds = new List<int>(players.Keys);
+        foreach (int id in playerIds)
+        {
+            Character character = players[id];
+            character.position += character.velocity * Time.deltaTime;
+            players[id] = character; // Reassign the updated struct back to the dictionary
+        }
+    }
     public void HandlePlayerInput(int clientId, int input)
     {
+        if (!players.ContainsKey(clientId)) return;
+
         Character character = players[clientId];
+        character.velocity = CalculateVelocity(input);
+        players[clientId] = character;
+
+        NotifyPlayersOfVelocityChange(clientId);
+
+    }
+
+    private Vector2 CalculateVelocity(int input)
+    {
+        Vector2 characterVelocityInPercent;
+        // Your existing logic to calculate velocity...
         characterVelocityInPercent = Vector2.zero;
 
-        if(input == InputSendToSever.wdKey ) 
+        if (input == InputSendToSever.wdKey)
         {
             characterVelocityInPercent.x = DiagonalCharacterSpeed;
             characterVelocityInPercent.y = DiagonalCharacterSpeed;
@@ -30,7 +54,7 @@ public class GameLogic : MonoBehaviour
             characterVelocityInPercent.x = -DiagonalCharacterSpeed;
             characterVelocityInPercent.y = DiagonalCharacterSpeed;
         }
-        else if( input == InputSendToSever.sdKey ) 
+        else if (input == InputSendToSever.sdKey)
         {
             characterVelocityInPercent.x = DiagonalCharacterSpeed;
             characterVelocityInPercent.y = -DiagonalCharacterSpeed;
@@ -44,36 +68,45 @@ public class GameLogic : MonoBehaviour
             characterVelocityInPercent.x = CharacterSpeed;
         else if (input == InputSendToSever.aKey)
             characterVelocityInPercent.x = -CharacterSpeed;
-        else if(input == InputSendToSever.wKey)
+        else if (input == InputSendToSever.wKey)
             characterVelocityInPercent.y = CharacterSpeed;
         else if (input == InputSendToSever.sKey)
             characterVelocityInPercent.y = -CharacterSpeed;
-
-        character.velocityX = characterVelocityInPercent.x;
-        character.velocityY = characterVelocityInPercent.y;
-
-        players[clientId] = character;
-
-        foreach( int id in players.Keys ) 
-        {          
-            NetworkServerProcessing.SendMessageToClient($"{ServerToClientSignifiers.PlayerVelocity},{characterVelocityInPercent.x},{characterVelocityInPercent.y}", clientId, TransportPipeline.ReliableAndInOrder);
-        }
-        
+        return characterVelocityInPercent;
     }
 
-    public void AddPlayer(int  id) 
-    { 
-        if(players.Count == 0)
+    private void NotifyPlayersOfVelocityChange(int clientId)
+    {
+        Vector2 velocity = players[clientId].velocity;
+        foreach (int id in players.Keys)
         {
-            Character character = new Character();
-            players.Add(id,character);
+            NetworkServerProcessing.SendMessageToClient($"{ServerToClientSignifiers.PlayerVelocity},{clientId},{velocity.x},{velocity.y}", id, TransportPipeline.ReliableAndInOrder);
         }
     }
-    public void RemovePlayer(int id) 
-    { 
-        if(players.ContainsKey(id))
+    public void AddPlayer(int playerId)
+    {
+        Character newPlayer = new Character(Vector2.zero, Vector2.zero);
+        players.Add(playerId, newPlayer);
+
+        // Notify all players about the new player
+        foreach (int id in players.Keys)
         {
-            players.Remove(id);
+            NetworkServerProcessing.SendMessageToClient($"{ServerToClientSignifiers.CreateNewPlayer},{playerId},{newPlayer.position.x},{newPlayer.position.y}", id, TransportPipeline.ReliableAndInOrder);
+
+            // If it's not the new player, notify the new player about the existing players
+            if (id != playerId)
+            {
+                NetworkServerProcessing.SendMessageToClient($"{ServerToClientSignifiers.CreateNewPlayer},{id},{players[id].position.x},{players[id].position.y}", playerId, TransportPipeline.ReliableAndInOrder);
+            }
+        }
+    }
+    public void RemovePlayer(int playerId) 
+    { 
+        if(players.ContainsKey(playerId))
+        {
+            players.Remove(playerId);
+            foreach (int id in players.Keys)
+                NetworkServerProcessing.SendMessageToClient($"{ServerToClientSignifiers.RemovePlayer},{playerId}", playerId, TransportPipeline.ReliableAndInOrder);
         }
             
     }
@@ -94,15 +127,11 @@ public static class InputSendToSever
 
 public struct Character
 {
-    public float positionX;
-    public float positionY;
-    public float velocityX;
-    public float velocityY;
-    public Character(float posX,float posY, float velX, float velY)
+    public Vector2 position;
+    public Vector2 velocity;
+    public Character(Vector2 pos, Vector2 vel)
     {
-        this.positionX = posX;
-        this.positionY = posY;
-        this.velocityX = velX;
-        this.velocityY = velY;
+        position = pos;
+        velocity = vel;
     }
 }
