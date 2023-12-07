@@ -4,7 +4,6 @@ using UnityEngine;
 
 static public class NetworkServerProcessing
 {
-
     #region Send and Receive Data Functions
     static public void ReceivedMessageFromClient(string msg, int clientConnectionID, TransportPipeline pipeline)
     {
@@ -13,16 +12,11 @@ static public class NetworkServerProcessing
         string[] csv = msg.Split(',');
         int signifier = int.Parse(csv[0]);
 
-        if (signifier == ClientToServerSignifiers.asd)
+        if (signifier == ClientToServerSignifiers.PlayerInput)
         {
-
+            const int playerInput = 1;
+            gameLogic.HandlePlayerInput(clientConnectionID,int.Parse(csv[playerInput]));
         }
-        // else if (signifier == ClientToServerSignifiers.asd)
-        // {
-
-        // }
-
-        //gameLogic.DoSomething();
     }
     static public void SendMessageToClient(string msg, int clientConnectionID, TransportPipeline pipeline)
     {
@@ -35,10 +29,12 @@ static public class NetworkServerProcessing
 
     static public void ConnectionEvent(int clientConnectionID)
     {
+        gameLogic.AddPlayer(clientConnectionID);
         Debug.Log("Client connection, ID == " + clientConnectionID);
     }
     static public void DisconnectionEvent(int clientConnectionID)
     {
+        gameLogic.RemovePlayer(clientConnectionID);
         Debug.Log("Client disconnection, ID == " + clientConnectionID);
     }
 
@@ -68,11 +64,14 @@ static public class NetworkServerProcessing
 static public class ClientToServerSignifiers
 {
     public const int asd = 1;
+    public const int PlayerInput = 2;
 }
 
 static public class ServerToClientSignifiers
 {
     public const int asd = 1;
+    public const int PlayerVelocity = 2;
+    public const int OtherPlayersVelocity = 3;
 }
 
 #endregion
